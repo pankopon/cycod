@@ -659,8 +659,8 @@ public class FileHelpers
             // Just check in the current directory
             foreach (var fileName in fileNames)
             {
-                var filePath = Path.Combine(currentPath, fileName);
-                if (File.Exists(filePath))
+                var filePath = FindFileIgnoringCase(currentPath, fileName);
+                if (filePath != null)
                     return filePath;
             }
             return null;
@@ -672,8 +672,8 @@ public class FileHelpers
         {
             foreach (var fileName in fileNames)
             {
-                var filePath = Path.Combine(currentCheckPath, fileName);
-                if (File.Exists(filePath))
+                var filePath = FindFileIgnoringCase(currentCheckPath, fileName);
+                if (filePath != null)
                     return filePath;
             }
             
@@ -682,6 +682,53 @@ public class FileHelpers
         }
         
         return null;
+    }
+
+    /// <summary>
+    /// Resolves a file name within a directory, ignoring case differences.
+    /// </summary>
+    /// <remarks>
+    /// An exact match is tried first, so this is a no-op on Windows and on any
+    /// case-insensitive volume. The fallback exists because names like
+    /// "AGENTS.md" are conventionally written in caps but are often stored on
+    /// disk as "agents.md". On NTFS either spelling resolves to the same file,
+    /// so the caller finds it; on ext4 it does not, and the file is silently
+    /// missed. Matching case-insensitively makes Linux and macOS behave the way
+    /// Windows already does.
+    ///
+    /// Returns the real on-disk path (with its actual casing), or null.
+    /// </remarks>
+    private static string? FindFileIgnoringCase(string directory, string fileName)
+    {
+        // Exact match first: cheapest, and preserves existing behaviour.
+        var exactPath = Path.Combine(directory, fileName);
+        if (File.Exists(exactPath))
+            return exactPath;
+
+        // Only a bare file name can be resolved against the directory listing.
+        // Anything with its own directory component (or rooted, e.g. an expanded
+        // "~/...") has already been fully handled by the exact check above.
+        var bareName = Path.GetFileName(fileName);
+        if (string.IsNullOrEmpty(bareName) || bareName != fileName)
+            return null;
+
+        try
+        {
+            if (!Directory.Exists(directory))
+                return null;
+
+            // Deterministic result when several case-variants coexist, which is
+            // possible on case-sensitive file systems.
+            return Directory.EnumerateFiles(directory)
+                .Where(path => string.Equals(Path.GetFileName(path), bareName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            // An unreadable directory is simply not a match; keep searching.
+            return null;
+        }
     }
 
     private static char[] _invalidFileNameCharsForWeb = GetInvalidFileNameCharsForWeb();

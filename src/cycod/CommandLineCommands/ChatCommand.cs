@@ -585,7 +585,10 @@ public class ChatCommand : CommandWithVariables
         var input = ReadLineOrSimulateInput(inputInstructions, null);
         if (input != null) return input;
 
-        string? line = Console.ReadLine();
+        // On Linux/macOS, Console.ReadLine() provides no line editing or history;
+        // this editor supplies both. On Windows the console host already does,
+        // so this defers to Console.ReadLine() there.
+        string? line = ConsoleLineEditor.ReadLine();
         if (line == null) return defaultOnEndOfInput;
 
         var isMultiLine = MultilineInputHelper.StartsWithBackticks(line);
