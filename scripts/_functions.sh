@@ -7,7 +7,7 @@
 # Description: Generate a development version with username and timestamp
 # Parameters: None
 # Outputs:
-#   Returns a version string like "1.0.0-DEV-username-20250612.1"
+#   Returns a version string like "1.0.0-dev-username-20250612.1"
 #
 cycod_version_get_dev() {
   # Base version
@@ -24,7 +24,7 @@ cycod_version_get_dev() {
   local MINUTE=$(date +%M)
   local TIME_PART="${HOUR}${MINUTE}"
   
-  echo "${BASE_VERSION}-DEV-${USERNAME}-${DATE_TODAY}${TIME_PART}"
+  echo "${BASE_VERSION}-dev-${USERNAME}-${DATE_TODAY}${TIME_PART}"
 }
 
 # Function: cycod_version_get_local
@@ -35,7 +35,7 @@ cycod_version_get_dev() {
 # Parameters:
 #   $1: Counter state file (optional, defaults to ./.local-build-number)
 # Outputs:
-#   Returns a version string like "1.0.0-LOCAL-username-20250612.3"
+#   Returns a version string like "1.0.0-local-username-20250612.3"
 #
 cycod_version_get_local() {
   local STATE_FILE=${1:-./.local-build-number}
@@ -61,7 +61,7 @@ cycod_version_get_local() {
 
   # The trailing ".N" is what cycod_version_calculate reads as FINAL_PART,
   # so NUMERIC_VERSION advances too (revision = day_of_year * 100 + N).
-  echo "${BASE_VERSION}-LOCAL-${USERNAME}-${DATE_TODAY}.${NEXT_NUM}"
+  echo "${BASE_VERSION}-local-${USERNAME}-${DATE_TODAY}.${NEXT_NUM}"
 }
 
 # Function: cycod_version_calculate
@@ -74,8 +74,16 @@ cycod_version_get_local() {
 #   NUMERIC_VERSION: Four-part numeric version suitable for AssemblyVersion/FileVersion
 #
 cycod_version_calculate() {
-  # Set the VERSION variable
-  VERSION=$1
+  # Set the VERSION variable.
+  #
+  # Lower-case the whole version string first. NuGet normalises a SemVer
+  # prerelease tag to lower case when it resolves a package, but 'dotnet pack'
+  # writes the file using the tag exactly as given. An upper-case tag therefore
+  # produces 'Pkg.1.0.0-LOCAL-....nupkg' on disk while 'dotnet tool install'
+  # looks for 'pkg.1.0.0-local-....nupkg'. On Windows (case-insensitive file
+  # system) the lookup still succeeds; on Linux/WSL it fails with
+  # FileNotFoundException. Normalising here keeps both platforms working.
+  VERSION=$(echo "$1" | tr '[:upper:]' '[:lower:]')
   echo "Calculating version components from: $VERSION"
   
   # Extract the major.minor.build parts from the version

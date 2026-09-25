@@ -1,0 +1,46 @@
+# Normalise line endings.
+#
+# Baseline: let git decide what is text and store it as LF in the repository.
+# Working-copy endings are then controlled by the rules below (and by
+# core.autocrlf for anything not explicitly listed).
+* text=auto
+
+# Shell scripts MUST be LF in the working tree, on every platform.
+# bash refuses to run a script with CRLF line endings -- the trailing \r
+# becomes part of each command, producing errors like:
+#     scripts/_functions.sh: line 5: $'\r': command not found
+# This matters on Windows too, because the scripts are run under Git Bash
+# and WSL, both of which use real bash.
+*.sh text eol=lf
+
+# Windows-native scripts want CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Source and config: LF in the repo, platform-native in the working tree
+# via the `* text=auto` rule above. Listed explicitly so the intent is clear.
+*.cs      text
+*.csproj  text
+*.sln     text eol=crlf
+*.targets text
+*.json    text
+*.jsonl   text
+*.yml     text
+*.yaml    text
+*.md      text
+*.txt     text
+
+# Binary files: never touch these.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.nupkg binary
+*.dll  binary
+*.exe  binary
+*.snk  binary
