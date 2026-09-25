@@ -19,7 +19,9 @@ source "${SCRIPT_DIR}/_functions.sh"
 cycod_check_environment
 
 # Get parameters
-VERSION=${1:-$(cycod_version_get_dev)}
+# No version argument => this is a local-only build; auto-increment the
+# build counter so the result always supersedes the previous local install.
+VERSION=${1:-$(cycod_version_get_local)}
 OUTPUT_DIR=${2:-./nuget-packages}
 CONFIGURATION=${3:-Release}
 

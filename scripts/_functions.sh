@@ -27,6 +27,43 @@ cycod_version_get_dev() {
   echo "${BASE_VERSION}-DEV-${USERNAME}-${DATE_TODAY}${TIME_PART}"
 }
 
+# Function: cycod_version_get_local
+# Description: Generate a monotonically increasing version for local-only installs.
+#   Produces a trailing ".N" build counter that auto-increments on every call
+#   within the same day, so each pack produces a version that dotnet tool
+#   treats as strictly newer than the previous one.
+# Parameters:
+#   $1: Counter state file (optional, defaults to ./.local-build-number)
+# Outputs:
+#   Returns a version string like "1.0.0-LOCAL-username-20250612.3"
+#
+cycod_version_get_local() {
+  local STATE_FILE=${1:-./.local-build-number}
+  local BASE_VERSION="1.0.0"
+  # whoami can return DOMAIN\user or DOMAIN+user on Windows; strip the domain
+  # and any character that is not legal in a SemVer prerelease tag ([0-9A-Za-z-]).
+  local USERNAME=$(whoami | sed 's/.*[\\+]//' | tr -cd '0-9A-Za-z-')
+  local DATE_TODAY=$(date +%Y%m%d)
+
+  # State file holds "YYYYMMDD N". Reset the counter when the day rolls over.
+  local LAST_DATE=""
+  local LAST_NUM=0
+  if [ -f "$STATE_FILE" ]; then
+    read -r LAST_DATE LAST_NUM < "$STATE_FILE" || true
+  fi
+
+  local NEXT_NUM=1
+  if [ "$LAST_DATE" = "$DATE_TODAY" ] && [[ $LAST_NUM =~ ^[0-9]+$ ]]; then
+    NEXT_NUM=$((LAST_NUM + 1))
+  fi
+
+  echo "$DATE_TODAY $NEXT_NUM" > "$STATE_FILE"
+
+  # The trailing ".N" is what cycod_version_calculate reads as FINAL_PART,
+  # so NUMERIC_VERSION advances too (revision = day_of_year * 100 + N).
+  echo "${BASE_VERSION}-LOCAL-${USERNAME}-${DATE_TODAY}.${NEXT_NUM}"
+}
+
 # Function: cycod_version_calculate
 # Description: Calculate numeric version components from a version string
 # Parameters:
@@ -208,13 +245,18 @@ TOOLS=("cycod" "cycodt" "cycodmd" "cycodgr" "cycodj")
 DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 
 for TOOL in "\${TOOLS[@]}"; do
-  echo "Installing \${TOOL} (v\${VERSION}) from local feed…"
-  dotnet tool install --global \${TOOL} \\
+  echo "Installing/updating \${TOOL} (v\${VERSION}) from local feed..."
+  # 'update' installs when absent and replaces when present, so re-running
+  # this script over an existing installation is not an error.
+  # --allow-downgrade covers the case where the currently installed version
+  # sorts higher than this local build (e.g. a published -alpha package).
+  dotnet tool update --global \${TOOL} \\
     --version "\${VERSION}" \\
+    --allow-downgrade \\
     --add-source "\${DIR}/nuget-packages"
 done
 
-echo "✅ All tools installed."
+echo "All tools installed."
 EOF
 
   chmod +x "$INSTALL_SCRIPT"
