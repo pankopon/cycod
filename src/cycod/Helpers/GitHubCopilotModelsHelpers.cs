@@ -24,10 +24,11 @@ public class GitHubCopilotModelsHelpers
     /// </summary>
     /// <param name="copilotToken">The Copilot authentication token</param>
     /// <returns>The list of available models</returns>
-    public async Task<ModelsResponse> GetModelsAsync(string copilotToken, string editorVersion = "vscode/1.85.0")
+    public async Task<ModelsResponse> GetModelsAsync(string copilotToken, string editorVersion = "vscode/1.85.0", string? endpoint = null)
     {
         // Create new request message to control headers exactly
-        var request = new HttpRequestMessage(HttpMethod.Get, MODELS_API_URL);
+        var modelsUrl = endpoint == null ? MODELS_API_URL : endpoint.TrimEnd('/') + "/models";
+        using var request = new HttpRequestMessage(HttpMethod.Get, modelsUrl);
         
         // Add the authorization header with the Copilot token
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", copilotToken);
@@ -73,11 +74,11 @@ public class GitHubCopilotModelsHelpers
     /// </summary>
     /// <param name="copilotToken">The Copilot authentication token</param>
     /// <returns>The list of available models</returns>
-    public ModelsResponse GetModelsSync(string copilotToken, string editorVersion = "vscode/1.85.0")
+    public ModelsResponse GetModelsSync(string copilotToken, string editorVersion = "vscode/1.85.0", string? endpoint = null)
     {
         try
         {
-            return GetModelsAsync(copilotToken, editorVersion).GetAwaiter().GetResult();
+            return GetModelsAsync(copilotToken, editorVersion, endpoint).GetAwaiter().GetResult();
         }
         catch (GitHubTokenExpiredException)
         {
@@ -205,6 +206,19 @@ public class GitHubCopilotModelsHelpers
         
         [JsonPropertyName("capabilities")]
         public ModelCapabilities? Capabilities { get; set; }
+
+        /// <summary>
+        /// API endpoints this model can be called through, e.g. "/chat/completions",
+        /// "/responses", "/v1/messages".
+        /// </summary>
+        /// <remarks>
+        /// Absent for older models (gpt-4o, gpt-4.1, gpt-3.5-turbo, the embedding
+        /// models); those predate the field and are chat/completions models. A null
+        /// value therefore means "unknown", not "supports nothing", and callers must
+        /// fall back to the historical default rather than treating it as empty.
+        /// </remarks>
+        [JsonPropertyName("supported_endpoints")]
+        public List<string>? SupportedEndpoints { get; set; }
     }
 
     public class ModelCapabilities

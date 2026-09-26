@@ -88,8 +88,9 @@ public class FunctionCallingChat : IAsyncDisposable
         while (true)
         {
             var responseContent = string.Empty;
-            await foreach (var update in _chatClient.GetStreamingResponseAsync(Conversation.Messages, _options))
+            await foreach (var rawUpdate in _chatClient.GetStreamingResponseAsync(Conversation.Messages, _options))
             {
+                var update = HandleStreamingErrors(rawUpdate);
                 _functionCallDetector.CheckForFunctionCall(update);
 
                 var content = string.Join("", update.Contents
@@ -120,6 +121,28 @@ public class FunctionCallingChat : IAsyncDisposable
 
             return contentToReturn;
         }
+    }
+
+    private ChatResponseUpdate HandleStreamingErrors(ChatResponseUpdate update)
+    {
+        var errors = update.Contents.OfType<ErrorContent>().ToList();
+        if (errors.Count == 0) return update;
+
+        // The Responses adapter represents refusals as ErrorContent with this code.
+        var failure = errors.FirstOrDefault(error => !string.Equals(error.ErrorCode, "Refusal", StringComparison.OrdinalIgnoreCase));
+        if (failure != null)
+        {
+            _functionCallDetector.Clear();
+            throw new InvalidOperationException($"Chat service error ({failure.ErrorCode ?? "unknown"}): {failure.Message}");
+        }
+
+        var copy = update.Clone();
+        copy.Contents = update.Contents
+            .Select(content => content is ErrorContent refusal
+                ? (AIContent)new TextContent(refusal.Message ?? "The model declined this request.")
+                : content)
+            .ToList();
+        return copy;
     }
 
     private bool TryCallFunctions(string responseContent, Func<string, string?, bool>? approveFunctionCall, Action<string, string, object?>? functionCallCallback, Action<IList<ChatMessage>>? messageCallback)

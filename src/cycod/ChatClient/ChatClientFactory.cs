@@ -13,6 +13,7 @@ using GeminiDotnet.Extensions.AI;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using OpenAI.Chat;
+using OpenAI.Responses;
 
 public static class ChatClientFactory
 {
@@ -173,6 +174,17 @@ public static class ChatClientFactory
 
         var impersonateVsCodeEditor = !integrationIdOk;
         if (impersonateVsCodeEditor) options.AddPolicy(new CustomHeaderPolicy("Editor-Version", editorVersion), PipelinePosition.BeforeTransport);
+
+        // Copilot serves some models only through /responses and others only
+        // through /chat/completions, so pick the client that matches the model.
+        var useResponsesApi = CopilotEndpointRouter.ShouldUseResponsesApi(model, tokenDetails.token!, editorVersion, endpoint);
+        if (useResponsesApi)
+        {
+            var responseClient = new OpenAIResponseClient(model, new ApiKeyCredential(" "), options);
+
+            ConsoleHelpers.WriteDebugLine("Using GitHub Copilot token for authentication (with auto-refresh), via the Responses API");
+            return new StatelessResponsesChatClient(responseClient.AsIChatClient());
+        }
 
         var chatClient = new ChatClient(model, new ApiKeyCredential(" "), options);
 
