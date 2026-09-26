@@ -89,12 +89,14 @@ public static class ConsoleLineEditor
     {
         var buffer = new StringBuilder();
         var cursor = 0;              // insertion point within buffer
-        var previousRenderLength = 0; // so we can erase leftovers on shrink
 
         // The prompt has already been written by the caller; whatever column we
         // start at is where the editable region begins.
         var startLeft = Console.CursorLeft;
         var startTop = Console.CursorTop;
+        var renderer = new LineRenderer(startLeft, startTop,
+            () => Console.BufferWidth, () => Console.BufferHeight,
+            Console.SetCursorPosition, Console.Write, Console.WriteLine);
 
         // Index into history while browsing with Up/Down. _history.Count means
         // "not browsing" (i.e. showing the live buffer).
@@ -109,7 +111,7 @@ public static class ConsoleLineEditor
 
             if (key == ConsoleKey.Enter)
             {
-                Console.WriteLine();
+                renderer.Finish(buffer);
                 var result = buffer.ToString();
                 AddToHistory(result);
                 return result;
@@ -220,7 +222,7 @@ public static class ConsoleLineEditor
                 historyIndex = _history.Count;
             }
 
-            previousRenderLength = Render(buffer, cursor, startLeft, ref startTop, previousRenderLength);
+            renderer.Render(buffer, cursor);
         }
     }
 
@@ -234,41 +236,67 @@ public static class ConsoleLineEditor
     /// be slow and would race with our own Console.ReadKey() calls. Instead the
     /// position is captured once by the caller and tracked by arithmetic here.
     /// </summary>
-    private static int Render(StringBuilder buffer, int cursor, int startLeft, ref int startTop, int previousRenderLength)
+    private sealed class LineRenderer(
+        int startLeft, int startTop, Func<int> getWidth, Func<int> getHeight,
+        Action<int, int> setCursorPosition, Action<string> write, Action writeLine)
     {
-        var width = Console.BufferWidth;
-        var height = Console.BufferHeight;
-        if (width <= 0) return previousRenderLength;
+        private int _startTop = startTop;
+        private int _previousRenderLength;
+        private int _viewOffset;
 
-        var text = buffer.ToString();
-
-        // Pad with spaces to erase whatever the previous, longer render left behind.
-        var padding = Math.Max(0, previousRenderLength - text.Length);
-        var painted = text + new string(' ', padding);
-
-        // How many rows does the painted region occupy, and would it run off the
-        // bottom of the buffer? If so the terminal will scroll, which moves our
-        // origin up by the overflow amount.
-        var lastCell = startLeft + Math.Max(painted.Length - 1, 0);
-        var rowsUsed = lastCell / width;
-        var overflow = (startTop + rowsUsed) - (height - 1);
-        if (overflow > 0)
+        public void Render(StringBuilder buffer, int cursor)
         {
-            startTop -= overflow;
-            if (startTop < 0) startTop = 0;
+            var width = getWidth();
+            var height = getHeight();
+            if (width <= 0 || height <= 0) return;
+
+            var text = buffer.ToString();
+            ScrollToMakeRoom(text.Length, width, height);
+
+            // Reserve a cell after the repaint, even at an exact wrap boundary.
+            // Never write the bottom-right cell and depend on delayed autowrap.
+            var capacity = (height - _startTop) * width - startLeft - 1;
+            UpdateViewport(text.Length, cursor, capacity);
+            var visibleLength = Math.Min(text.Length - _viewOffset, capacity);
+            var visible = text.Substring(_viewOffset, visibleLength);
+            var padding = Math.Max(0, _previousRenderLength - visibleLength);
+
+            setCursorPosition(startLeft, _startTop);
+            write(visible + new string(' ', padding));
+            _previousRenderLength = visibleLength;
+
+            var cursorCell = startLeft + cursor - _viewOffset;
+            setCursorPosition(cursorCell % width, _startTop + cursorCell / width);
         }
 
-        Console.SetCursorPosition(startLeft, startTop);
-        Console.Write(painted);
+        public void Finish(StringBuilder buffer)
+        {
+            Render(buffer, buffer.Length);
+            writeLine();
+        }
 
-        var cursorCell = startLeft + cursor;
-        var cursorTop = startTop + (cursorCell / width);
-        var cursorLeft = cursorCell % width;
+        private void ScrollToMakeRoom(int textLength, int width, int height)
+        {
+            var endCell = startLeft + Math.Max(textLength, _previousRenderLength);
+            var overflow = Math.Max(0, _startTop + endCell / width - (height - 1));
+            var scroll = Math.Min(_startTop, overflow);
+            if (scroll == 0) return;
 
-        if (cursorTop > height - 1) cursorTop = height - 1;
-        Console.SetCursorPosition(cursorLeft, cursorTop);
+            // Move the actual screen contents (including the prompt) first.
+            setCursorPosition(0, height - 1);
+            for (var i = 0; i < scroll; i++) writeLine();
+            _startTop -= scroll;
+        }
 
-        return text.Length;
+        private void UpdateViewport(int textLength, int cursor, int capacity)
+        {
+            // Once input outgrows the screen, keep a bounded slice visible rather
+            // than clamping its cursor onto unrelated text. The prompt prefix
+            // stays in place; only the editable region changes with the slice.
+            _viewOffset = Math.Min(_viewOffset, Math.Max(0, textLength - capacity));
+            if (cursor < _viewOffset) _viewOffset = cursor;
+            if (cursor > _viewOffset + capacity) _viewOffset = cursor - capacity;
+        }
     }
 
     private static int FindPreviousWordStart(StringBuilder buffer, int cursor)
