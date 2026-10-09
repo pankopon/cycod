@@ -78,6 +78,11 @@ public class CycoDmdCliWrapper
     /// <returns>The command output as a string</returns>
     public async Task<string> ExecuteCycoDmdCommandAsync(string arguments, int timeoutMs = 120000)
     {
+        return await ExecuteCycoDmdCommandAsync(arguments, null, timeoutMs);
+    }
+
+    private async Task<string> ExecuteCycoDmdCommandAsync(string arguments, string[]? argumentList, int timeoutMs)
+    {
         try
         {
             // Always log the command at Info level for better tracking
@@ -91,9 +96,12 @@ public class CycoDmdCliWrapper
             // Create a process builder to execute the cycodmd command
             var processBuilder = new RunnableProcessBuilder()
                 .WithFileName("cycodmd")
-                .WithArguments(arguments)
                 .WithTimeout(timeoutMs)
                 .WithVerboseLogging(ConsoleHelpers.IsVerbose());
+            if (argumentList != null)
+                processBuilder.WithArgumentList(argumentList);
+            else
+                processBuilder.WithArguments(arguments);
 
             // Add callbacks if verbose logging is enabled
             if (ConsoleHelpers.IsVerbose())
@@ -237,6 +245,14 @@ public class CycoDmdCliWrapper
     public async Task<string> ExecuteRawCycoDmdCommandAsync(string arguments)
     {
         return await ExecuteCycoDmdCommandAsync(arguments);
+    }
+
+    /// <summary>
+    /// Executes CYCODMD with literal arguments, preserving quotes and backslashes.
+    /// </summary>
+    public async Task<string> ExecuteRawCycoDmdCommandAsync(string[] arguments)
+    {
+        return await ExecuteCycoDmdCommandAsync(string.Join(" ", arguments), arguments, 120000);
     }
     
     /// <summary>

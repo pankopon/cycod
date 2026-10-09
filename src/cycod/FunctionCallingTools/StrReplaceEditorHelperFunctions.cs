@@ -601,7 +601,7 @@ public class StrReplaceEditorHelperFunctions
         var arguments = BuildCycoDmdArguments(filePatterns, excludePatterns, fileContains,
             fileNotContains, modifiedAfter, modifiedBefore, searchPattern, @new, executeMode: false);
         
-        Logger.Info($"Calling cycodmd for preview with arguments: {arguments}");
+        Logger.Info($"Calling cycodmd for preview with arguments: {string.Join(" ", arguments)}");
         return await _cycoDmdWrapper.ExecuteRawCycoDmdCommandAsync(arguments);
     }
     
@@ -614,25 +614,15 @@ public class StrReplaceEditorHelperFunctions
         string old, string @new, bool useRegex)
     {
         // First, get list of files that will be affected
-        var findFilesArgs = $"find-files {string.Join(" ", filePatterns.Select(p => $"\"{p}\""))}";
-        
-        if (excludePatterns?.Length > 0)
-            findFilesArgs += $" --exclude {string.Join(" ", excludePatterns.Select(p => $"\"{p}\""))}";
-        if (!string.IsNullOrEmpty(fileContains))
-            findFilesArgs += $" --file-contains \"{fileContains}\"";
-        if (!string.IsNullOrEmpty(fileNotContains))
-            findFilesArgs += $" --file-not-contains \"{fileNotContains}\"";
-        if (!string.IsNullOrEmpty(modifiedAfter))
-            findFilesArgs += $" --modified-after \"{modifiedAfter}\"";
-        if (!string.IsNullOrEmpty(modifiedBefore))
-            findFilesArgs += $" --modified-before \"{modifiedBefore}\"";
-        
-        findFilesArgs += " --files-only";
-        
-        var fileListOutput = await _cycoDmdWrapper.ExecuteRawCycoDmdCommandAsync(findFilesArgs);
+        var findFilesArgs = BuildFileSelectionArguments(filePatterns, excludePatterns,
+            fileContains, fileNotContains, modifiedAfter, modifiedBefore);
+        findFilesArgs.Add("--files-only");
+
+        var fileListOutput = await _cycoDmdWrapper.ExecuteRawCycoDmdCommandAsync(findFilesArgs.ToArray());
         var filesToProcess = fileListOutput
             .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
             .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Select(f => Path.GetFullPath(f))
             .ToList();
         
         if (filesToProcess.Count == 0)
@@ -678,31 +668,37 @@ public class StrReplaceEditorHelperFunctions
     /// <summary>
     /// Builds cycodmd command arguments for replacement operations
     /// </summary>
-    private string BuildCycoDmdArguments(
+    private string[] BuildCycoDmdArguments(
         string[] filePatterns, string[]? excludePatterns, string fileContains,
         string fileNotContains, string modifiedAfter, string modifiedBefore,
         string searchPattern, string replacementText, bool executeMode)
     {
-        var arguments = $"find-files {string.Join(" ", filePatterns.Select(p => $"\"{p}\""))}";
-        
+        var arguments = BuildFileSelectionArguments(filePatterns, excludePatterns,
+            fileContains, fileNotContains, modifiedAfter, modifiedBefore);
+        arguments.AddRange(new[] { "--contains", searchPattern, "--replace-with", replacementText });
+        if (executeMode) arguments.Add("--execute");
+        return arguments.ToArray();
+    }
+
+    private List<string> BuildFileSelectionArguments(
+        string[] filePatterns, string[]? excludePatterns, string fileContains,
+        string fileNotContains, string modifiedAfter, string modifiedBefore)
+    {
+        var arguments = new List<string> { "find-files" };
+        arguments.AddRange(filePatterns);
         if (excludePatterns?.Length > 0)
-            arguments += $" --exclude {string.Join(" ", excludePatterns.Select(p => $"\"{p}\""))}";
-        
+        {
+            arguments.Add("--exclude");
+            arguments.AddRange(excludePatterns);
+        }
         if (!string.IsNullOrEmpty(fileContains))
-            arguments += $" --file-contains \"{fileContains}\"";
+            arguments.AddRange(new[] { "--file-contains", fileContains });
         if (!string.IsNullOrEmpty(fileNotContains))
-            arguments += $" --file-not-contains \"{fileNotContains}\"";
+            arguments.AddRange(new[] { "--file-not-contains", fileNotContains });
         if (!string.IsNullOrEmpty(modifiedAfter))
-            arguments += $" --modified-after \"{modifiedAfter}\"";
+            arguments.AddRange(new[] { "--modified-after", modifiedAfter });
         if (!string.IsNullOrEmpty(modifiedBefore))
-            arguments += $" --modified-before \"{modifiedBefore}\"";
-        
-        arguments += $" --contains \"{searchPattern}\"";
-        arguments += $" --replace-with \"{replacementText}\"";
-        
-        if (executeMode)
-            arguments += " --execute";
-        
+            arguments.AddRange(new[] { "--modified-before", modifiedBefore });
         return arguments;
     }
 

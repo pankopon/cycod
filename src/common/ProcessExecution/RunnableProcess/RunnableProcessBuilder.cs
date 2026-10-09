@@ -36,6 +36,7 @@ public class RunnableProcessBuilder
     /// <returns>This builder instance for method chaining.</returns>
     public RunnableProcessBuilder WithArguments(string arguments)
     {
+        _argumentList = null;
         _arguments = arguments;
         return this;
     }
@@ -47,6 +48,7 @@ public class RunnableProcessBuilder
     /// <returns>This builder instance for method chaining.</returns>
     public RunnableProcessBuilder WithArguments(string[] arguments)
     {
+        _argumentList = null;
         if (arguments == null || arguments.Length == 0)
         {
             _arguments = string.Empty;
@@ -64,12 +66,23 @@ public class RunnableProcessBuilder
     }
 
     /// <summary>
+    /// Sets literal arguments without command-line string parsing.
+    /// </summary>
+    public RunnableProcessBuilder WithArgumentList(string[] arguments)
+    {
+        _argumentList = arguments.ToArray();
+        _arguments = string.Empty;
+        return this;
+    }
+
+    /// <summary>
     /// Sets the arguments from a key-value dictionary, where each entry becomes a --key value pair.
     /// </summary>
     /// <param name="arguments">Dictionary of arguments.</param>
     /// <returns>This builder instance for method chaining.</returns>
     public RunnableProcessBuilder WithArguments(Dictionary<string, string> arguments)
     {
+        _argumentList = null;
         if (arguments == null || arguments.Count == 0)
         {
             _arguments = string.Empty;
@@ -95,6 +108,7 @@ public class RunnableProcessBuilder
     /// <returns>This builder instance for method chaining.</returns>
     public RunnableProcessBuilder WithCommandLine(string commandLine)
     {
+        _argumentList = null;
         ConsoleHelpers.WriteDebugLine($"RunnableProcessBuilder: WithCommandLine: '{commandLine}'");
         if (string.IsNullOrEmpty(commandLine))
         {
@@ -294,6 +308,7 @@ public class RunnableProcessBuilder
 
         // Create the runnable process
         var process = new RunnableProcess(_fileName, _arguments ?? string.Empty);
+        if (_argumentList != null) process.SetArgumentList(_argumentList);
 
         // Set all properties
         if (_workingDirectory != null)
@@ -441,6 +456,7 @@ public class RunnableProcessBuilder
 
     private string? _fileName;
     private string? _arguments;
+    private string[]? _argumentList;
     private string? _workingDirectory;
     private readonly Dictionary<string, string> _environmentVariables = new Dictionary<string, string>();
     private string? _standardInput;

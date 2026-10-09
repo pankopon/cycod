@@ -56,6 +56,16 @@ public class RunnableProcess
     }
 
     /// <summary>
+    /// Sets literal arguments without command-line string parsing.
+    /// </summary>
+    public void SetArgumentList(string[] arguments)
+    {
+        ThrowIfStarted();
+        _argumentList = arguments.ToArray();
+        _arguments = string.Empty;
+    }
+
+    /// <summary>
     /// Sets the working directory for the process.
     /// </summary>
     /// <param name="workingDirectory">The directory to use.</param>
@@ -240,6 +250,11 @@ public class RunnableProcess
 
             // Configure the process
             var startInfo = ConfigureProcessStartInfo(_fileName, _arguments);
+            if (_argumentList != null)
+            {
+                foreach (var argument in _argumentList)
+                    startInfo.ArgumentList.Add(argument);
+            }
 
             // Set working directory if specified
             if (!string.IsNullOrEmpty(_workingDirectory))
@@ -842,6 +857,7 @@ public class RunnableProcess
     // Configuration
     protected string _fileName = "";
     protected string _arguments = "";
+    private string[]? _argumentList;
     protected string? _workingDirectory;
     protected readonly Dictionary<string, string> _environmentVariables = new Dictionary<string, string>();
     protected string? _standardInput;
