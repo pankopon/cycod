@@ -5,6 +5,18 @@ namespace Tests.ProcessExecution;
 [TestClass]
 public class ReplacementArgumentTests
 {
+    private static StrReplaceEditorHelperFunctions CreateEditor()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root != null && !File.Exists(Path.Combine(root.FullName, "src", "cycodmd", "cycodmd.csproj"))) root = root.Parent;
+        Assert.IsNotNull(root);
+        var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
+        var executable = OperatingSystem.IsWindows() ? "cycodmd.exe" : "cycodmd";
+        var cli = Path.Combine(root.FullName, "src", "cycodmd", "bin", configuration, "net9.0", executable);
+        Assert.IsTrue(File.Exists(cli), cli);
+        return new StrReplaceEditorHelperFunctions(new CycoDmdCliWrapper(cli));
+    }
+
     [TestMethod]
     public async Task ReplaceAllInFiles_QuotedBackslashes_ArePreserved()
     {
@@ -16,7 +28,7 @@ public class ReplacementArgumentTests
         File.WriteAllText(file, old + Environment.NewLine);
         try
         {
-            var editor = new StrReplaceEditorHelperFunctions();
+            var editor = CreateEditor();
             var result = await editor.ReplaceAllInFiles(new[] { file }, old: old, @new: replacement, preview: false);
             Assert.AreEqual(replacement + Environment.NewLine, File.ReadAllText(file), result);
         }
@@ -51,7 +63,7 @@ public class ReplacementArgumentTests
         var replacement = "System.out.println(\"AuthToken:[REDACTED]\");";
         var original = string.Join(Environment.NewLine, Enumerable.Repeat(old, 3)) + Environment.NewLine;
         File.WriteAllText(file, original);
-        var editor = new StrReplaceEditorHelperFunctions();
+        var editor = CreateEditor();
         try
         {
             var preview = await editor.ReplaceAllInFiles(new[] { file }, old: old, @new: replacement);

@@ -8,6 +8,13 @@ using System.Text.RegularExpressions;
 /// </summary>
 public class StrReplaceEditorHelperFunctions
 {
+    public StrReplaceEditorHelperFunctions() : this(new CycoDmdCliWrapper()) { }
+
+    public StrReplaceEditorHelperFunctions(CycoDmdCliWrapper cycoDmdWrapper)
+    {
+        _cycoDmdWrapper = cycoDmdWrapper;
+    }
+
     [ReadOnly(true)]
     [Description("Returns a list of non-hidden files and directories up to 2 levels deep.")]
     public string ListFiles([Description("Absolute or relative path to directory.")] string path)
@@ -596,7 +603,7 @@ public class StrReplaceEditorHelperFunctions
         string fileNotContains, string modifiedAfter, string modifiedBefore,
         string old, string @new, bool useRegex)
     {
-        var searchPattern = useRegex ? old : System.Text.RegularExpressions.Regex.Escape(old);
+        var searchPattern = useRegex ? old : BuildLiteralSearchPattern(old);
         
         var arguments = BuildCycoDmdArguments(filePatterns, excludePatterns, fileContains,
             fileNotContains, modifiedAfter, modifiedBefore, searchPattern, @new, executeMode: false);
@@ -631,7 +638,7 @@ public class StrReplaceEditorHelperFunctions
         }
         
         // Store original content for undo (only for files that will actually change)
-        var searchPattern = useRegex ? old : System.Text.RegularExpressions.Regex.Escape(old);
+        var searchPattern = useRegex ? old : BuildLiteralSearchPattern(old);
         var regex = new System.Text.RegularExpressions.Regex(searchPattern);
         var filesWithChanges = new List<string>();
         
@@ -668,6 +675,12 @@ public class StrReplaceEditorHelperFunctions
     /// <summary>
     /// Builds cycodmd command arguments for replacement operations
     /// </summary>
+    private static string BuildLiteralSearchPattern(string text)
+    {
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        return string.Join(@"\r?\n", lines.Select(System.Text.RegularExpressions.Regex.Escape));
+    }
+
     private string[] BuildCycoDmdArguments(
         string[] filePatterns, string[]? excludePatterns, string fileContains,
         string fileNotContains, string modifiedAfter, string modifiedBefore,
@@ -702,6 +715,6 @@ public class StrReplaceEditorHelperFunctions
         return arguments;
     }
 
-    private readonly CycoDmdCliWrapper _cycoDmdWrapper = new CycoDmdCliWrapper();
+    private readonly CycoDmdCliWrapper _cycoDmdWrapper;
     private readonly Dictionary<string, string> EditHistory = new Dictionary<string, string>();
 }

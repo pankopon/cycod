@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\cycod\cycod.csproj" />
+    <ProjectReference Include="..\..\src\cycodmd\cycodmd.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\common\common.csproj" />
   </ItemGroup>
 

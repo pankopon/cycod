@@ -8,6 +8,15 @@ using System.Threading.Tasks;
 /// </summary>
 public class CycoDmdCliWrapper
 {
+    private readonly string _executable;
+
+    public CycoDmdCliWrapper() : this("cycodmd") { }
+
+    public CycoDmdCliWrapper(string executable)
+    {
+        _executable = executable;
+    }
+
     #region Error Message Constants
     
     /// <summary>
@@ -95,7 +104,7 @@ public class CycoDmdCliWrapper
 
             // Create a process builder to execute the cycodmd command
             var processBuilder = new RunnableProcessBuilder()
-                .WithFileName("cycodmd")
+                .WithFileName(_executable)
                 .WithTimeout(timeoutMs)
                 .WithVerboseLogging(ConsoleHelpers.IsVerbose());
             if (argumentList != null)

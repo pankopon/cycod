@@ -739,121 +739,64 @@ class Program
             return string.Empty;
             
         var content = await File.ReadAllTextAsync(filePath);
-        var lines = content.Split('\n');
-        
-        var matchingLines = new List<(int lineNumber, string originalLine, string newLine)>();
-        
-        for (int i = 0; i < lines.Length; i++)
+        var withoutCrLf = content.Replace("\r\n", string.Empty);
+        // Preserve uniform newline conventions; leave mixed/no-newline files alone.
+        if (content.Contains("\r\n") && !withoutCrLf.Contains('\n') && !withoutCrLf.Contains('\r'))
+            replacementText = replacementText.Replace("\r\n", "\n").Replace("\n", "\r\n");
+        else if (content.Contains('\n') && !content.Contains('\r'))
+            replacementText = replacementText.Replace("\r\n", "\n");
+
+        var newContent = content;
+        var replacementCount = 0;
+        foreach (var pattern in searchPatterns)
         {
-            var line = lines[i];
-            var hasMatch = searchPatterns.Any(pattern => pattern.IsMatch(line));
-            
-            if (hasMatch)
-            {
-                var newLine = line;
-                foreach (var pattern in searchPatterns)
-                {
-                    newLine = pattern.Replace(newLine, replacementText);
-                }
-                
-                if (newLine != line)
-                {
-                    matchingLines.Add((i + 1, line, newLine));
-                }
-            }
+            replacementCount += pattern.Matches(newContent).Count;
+            newContent = pattern.Replace(newContent, replacementText);
         }
-        
-        if (matchingLines.Count == 0)
+        if (newContent == content)
             return string.Empty;
-            
-        // If execute mode, actually perform the replacement
+
+        // Build the preview from the same whole-file replacement that is written.
+        var diff = FormatReplacementDiff(filePath, content, newContent, replacementCount, executeMode);
         if (executeMode)
-        {
-            var newContent = content;
-            foreach (var pattern in searchPatterns)
-            {
-                newContent = pattern.Replace(newContent, replacementText);
-            }
-            
             await File.WriteAllTextAsync(filePath, newContent);
-        }
-        
-        // Return diff format
-        return FormatReplacementDiff(filePath, matchingLines, executeMode);
+        return diff;
     }
     
     /// <summary>
     /// Formats replacement results as git-style diff with context
     /// </summary>
     private static string FormatReplacementDiff(
-        string filePath, 
-        List<(int lineNumber, string originalLine, string newLine)> matchingLines,
+        string filePath,
+        string originalContent,
+        string newContent,
+        int replacementCount,
         bool wasExecuted)
     {
-        if (matchingLines.Count == 0)
-            return string.Empty;
-            
+        var originalLines = originalContent.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+        var newLines = newContent.Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+        var prefix = 0;
+        while (prefix < originalLines.Length && prefix < newLines.Length && originalLines[prefix] == newLines[prefix])
+            prefix++;
+        var suffix = 0;
+        while (suffix < originalLines.Length - prefix && suffix < newLines.Length - prefix &&
+            originalLines[originalLines.Length - suffix - 1] == newLines[newLines.Length - suffix - 1])
+            suffix++;
+
         var sb = new StringBuilder();
         sb.AppendLine($"## {filePath}");
         sb.AppendLine();
-        
-        // Read file to get context lines
-        var allLines = File.ReadAllLines(filePath);
         const int contextLines = 3;
-        
-        // Find the range we need to show (with context)
-        var minLine = matchingLines.Min(m => m.lineNumber) - 1; // Convert to 0-indexed
-        var maxLine = matchingLines.Max(m => m.lineNumber) - 1;
-        
-        var startLine = Math.Max(0, minLine - contextLines);
-        var endLine = Math.Min(allLines.Length - 1, maxLine + contextLines);
-        
-        var changedLineNumbers = new HashSet<int>(matchingLines.Select(m => m.lineNumber - 1));
-        
-        // Show context and removed lines
-        for (int i = startLine; i <= endLine; i++)
-        {
-            if (changedLineNumbers.Contains(i))
-            {
-                // This is a line that will be changed - show as removed
-                var match = matchingLines.First(m => m.lineNumber - 1 == i);
-                sb.AppendLine($"- {i + 1}: {match.originalLine.TrimEnd()}");
-            }
-            else
-            {
-                // Context line
-                sb.AppendLine($"  {i + 1}: {allLines[i].TrimEnd()}");
-            }
-        }
-        
+        for (var i = Math.Max(0, prefix - contextLines); i < prefix; i++)
+            sb.AppendLine($"  {i + 1}: {originalLines[i]}");
+        for (var i = prefix; i < originalLines.Length - suffix; i++)
+            sb.AppendLine($"- {i + 1}: {originalLines[i]}");
+        for (var i = prefix; i < newLines.Length - suffix; i++)
+            sb.AppendLine($"+ {i + 1}: {newLines[i]}");
+        for (var i = newLines.Length - suffix; i < Math.Min(newLines.Length, newLines.Length - suffix + contextLines); i++)
+            sb.AppendLine($"  {i + 1}: {newLines[i]}");
         sb.AppendLine();
-        
-        // Show added lines (replacement)
-        for (int i = startLine; i <= endLine; i++)
-        {
-            if (changedLineNumbers.Contains(i))
-            {
-                // This is a line that was/will be changed - show as added
-                var match = matchingLines.First(m => m.lineNumber - 1 == i);
-                sb.AppendLine($"+ {i + 1}: {match.newLine.TrimEnd()}");
-            }
-            else
-            {
-                // Context line
-                sb.AppendLine($"  {i + 1}: {allLines[i].TrimEnd()}");
-            }
-        }
-        
-        sb.AppendLine();
-        if (wasExecuted)
-        {
-            sb.AppendLine($"Replaced {matchingLines.Count} occurrence(s) in this file.");
-        }
-        else
-        {
-            sb.AppendLine($"Will replace {matchingLines.Count} occurrence(s) in this file.");
-        }
-        
+        sb.AppendLine($"{(wasExecuted ? "Replaced" : "Will replace")} {replacementCount} occurrence(s) in this file.");
         return sb.ToString();
     }
 
